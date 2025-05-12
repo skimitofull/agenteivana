@@ -86,19 +86,27 @@ if pdf_file and excel_file:
         df[col] = df[col].apply(format_currency)
     st.write("Vista previa de movimientos:", df.head())
 
-    # Crear imagen de la tabla
-    img = create_table_image(df)
-    img_bytes = BytesIO()
-    img.save(img_bytes, format='PNG')
-    st.image(img_bytes.getvalue(), caption="Vista previa de la tabla de movimientos")
+   # Crear imagen de la tabla
+img = create_table_image(df)
+img_bytes = BytesIO()
+img.save(img_bytes, format='PNG')
+st.image(img_bytes.getvalue(), caption="Vista previa de la tabla de movimientos")
 
-    # Procesar PDF original
-    pdf_bytes = pdf_file.read()
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+# Convertir la imagen a PDF usando PIL
+pdf_bytes_table = BytesIO()
+img_rgb = img.convert('RGB')
+img_rgb.save(pdf_bytes_table, format='PDF')
+pdf_bytes_table.seek(0)
 
-    # Insertar la tabla como nueva página al final
-    img_pdf = fitz.open("pdf", img_bytes.getvalue())
-    doc.insert_pdf(img_pdf)
+# Procesar PDF original
+pdf_bytes = pdf_file.read()
+doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+
+# Abrir el PDF de la tabla como documento PDF
+img_pdf = fitz.open(stream=pdf_bytes_table.getvalue(), filetype="pdf")
+
+# Insertar la tabla como nueva página al final
+doc.insert_pdf(img_pdf)
 
     # Guardar PDF modificado
     output = BytesIO()
