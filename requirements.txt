@@ -1,6 +1,7 @@
 streamlit
 pandas
 pymupdf
-openpyxl
+reportlab
 Pillow
 numpy
+openpyxl
