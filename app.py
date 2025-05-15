@@ -12,8 +12,8 @@ import base64
 LETTER_WIDTH = 800
 LETTER_HEIGHT = 1000
 MARGIN = 30
-BASE_ROW_HEIGHT = 15  # Reducido para ajustar las filas
-HEADER_HEIGHT = 15    # Reducido para ajustar las filas
+BASE_ROW_HEIGHT = 25
+HEADER_HEIGHT = 25
 LINE_SPACING = 12
 ROWS_PER_PAGE = 20
 FONT_SIZE = 8.24
@@ -23,22 +23,22 @@ def split_concept(concept):
     if pd.isnull(concept):
         return ['']
 
-    concept = str(concept).strip().upper()  # Convertir a mayúsculas
+    concept = str(concept).strip().upper()
     parts = []
 
     if "TRANSF.INTERB SPEI" in concept:
         lines = concept.split('\n')
-        parts = [line.strip().upper() for line in lines if line.strip()]  # Asegurar mayúsculas
+        parts = [line.strip().upper() for line in lines if line.strip()]
     else:
         words = concept.split()
         current_line = []
         for word in words:
             current_line.append(word)
             if len(' '.join(current_line)) > 40:
-                parts.append(' '.join(current_line[:-1]).upper())  # Asegurar mayúsculas
+                parts.append(' '.join(current_line[:-1]).upper())
                 current_line = [word]
         if current_line:
-            parts.append(' '.join(current_line).upper())  # Asegurar mayúsculas
+            parts.append(' '.join(current_line).upper())
 
     return parts
 
@@ -63,7 +63,7 @@ def clean_date(date):
         return str(date).upper()
 
 def calculate_row_height(concept_parts):
-    return BASE_ROW_HEIGHT  # Altura fija de 15px
+    return len(concept_parts) * LINE_SPACING
 
 def create_page(df, start_idx, end_idx, page_number):
     buffer = BytesIO()
@@ -88,7 +88,6 @@ def create_page(df, start_idx, end_idx, page_number):
     alternate_row_color = colors.HexColor('#F0F0F0')
     border_color = colors.HexColor('#E5E5E5')
 
-    # Encabezado
     y = LETTER_HEIGHT - MARGIN
     header_y = y - HEADER_HEIGHT
     c.setFillColor(header_color)
@@ -107,9 +106,18 @@ def create_page(df, start_idx, end_idx, page_number):
 
     # Contenido
     c.setFont('Helvetica', FONT_SIZE)
+    prev_date = None
+
     for idx in range(start_idx, min(end_idx, len(df))):
         row = df.iloc[idx]
-        row_height = BASE_ROW_HEIGHT
+        concept_parts = split_concept(row['Concepto'])
+        row_height = calculate_row_height(concept_parts)
+
+        # Ajustar el espaciado solo cuando cambia la fecha
+        current_date = row['Fecha']
+        if prev_date is not None and current_date != prev_date:
+            current_y -= 5  # Pequeño espacio adicional entre fechas diferentes
+        prev_date = current_date
 
         if current_y - row_height < MARGIN:
             break
@@ -122,18 +130,17 @@ def create_page(df, start_idx, end_idx, page_number):
         c.setFillColor(colors.black)
         for i, col in enumerate(headers):
             x = x_positions[i]
-            value = str(row[col]).upper() if pd.notnull(row[col]) else ''
+            value = str(row[col]) if pd.notnull(row[col]) else ''
 
             if col == 'Concepto':
-                concept_parts = split_concept(row['Concepto'])
                 for j, line in enumerate(concept_parts):
-                    if j == 0:  # Solo mostrar la primera línea
-                        c.drawString(x + 5, current_y - 7, line)  # Ajuste vertical
+                    text_y = current_y - ((j + 1) * LINE_SPACING) + (LINE_SPACING / 2)
+                    c.drawString(x + 5, text_y, line)
             elif col in ['Depósito', 'Retiro', 'Saldo']:
                 text_width = c.stringWidth(value, 'Helvetica', FONT_SIZE)
-                c.drawString(x + col_widths[i] - text_width - 5, current_y - 7, value)  # Ajuste vertical
+                c.drawString(x + col_widths[i] - text_width - 5, current_y - LINE_SPACING + (LINE_SPACING / 2), value)
             else:
-                c.drawString(x + 5, current_y - 7, value)  # Ajuste vertical
+                c.drawString(x + 5, current_y - LINE_SPACING + (LINE_SPACING / 2), value)
 
         # Líneas verticales
         c.setStrokeColor(border_color)
