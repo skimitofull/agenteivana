@@ -9,8 +9,7 @@ from PyPDF2 import PdfMerger
 import base64
 
 # --- CONSTANTES GLOBALES ---
-LETTER_WIDTH = 800
-LETTER_HEIGHT = 1000
+LETTER_WIDTH, LETTER_HEIGHT = letter
 MARGIN = 30
 BASE_ROW_HEIGHT = 25
 HEADER_HEIGHT = 25
@@ -67,7 +66,7 @@ def calculate_row_height(concept_parts):
 
 def create_page(df, start_idx, end_idx, page_number):
     buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=(LETTER_WIDTH, LETTER_HEIGHT))
+    c = canvas.Canvas(buffer, pagesize=letter)
 
     width = LETTER_WIDTH - (2 * MARGIN)
     headers = ['Fecha', 'Concepto', 'Origen / Referencia', 'Depósito', 'Retiro', 'Saldo']
