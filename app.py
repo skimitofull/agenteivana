@@ -45,22 +45,47 @@ def clean_date(date):
     except:
         return str(date).upper()
 
-def split_concept(concept, max_chars=40):
+def split_concept(concept):
     if pd.isnull(concept):
         return ['']
     concept = str(concept).strip()
     parts = []
-    words = concept.split()
-    current_line = []
-    for word in words:
-        if len(' '.join(current_line + [word])) <= max_chars:
-            current_line.append(word)
-        else:
-            if current_line:
-                parts.append(' '.join(current_line))
-            current_line = [word]
-    if current_line:
-        parts.append(' '.join(current_line))
+
+    if "TRANSF INTERBANCARIA SPEI" in concept:
+        parts = ['TRANSF INTERBANCARIA SPEI']
+        # Extraer fecha
+        words = concept.split()
+        for i, word in enumerate(words):
+            if any(month in word.upper() for month in ['NOV', 'DIC']):
+                parts.append(f"{words[i-1]} {word}" if i > 0 else word)
+                break
+
+        # Extraer referencia
+        for word in words:
+            if word.startswith('//'):
+                parts.append(word)
+                break
+
+    elif "SCOTIALINE" in concept:
+        parts = ["SWEB PAGO A SCOTIALINE"]
+        for word in concept.split():
+            if word.isdigit() and len(word) > 10:
+                parts.append(word)
+                break
+    else:
+        # División general de texto
+        current_line = []
+        words = concept.split()
+        for word in words:
+            if len(' '.join(current_line + [word])) <= 45:
+                current_line.append(word)
+            else:
+                if current_line:
+                    parts.append(' '.join(current_line))
+                current_line = [word]
+        if current_line:
+            parts.append(' '.join(current_line))
+
     return parts
 
 def calculate_row_height(concept_parts):
@@ -190,32 +215,16 @@ uploaded_file = st.file_uploader("Selecciona tu archivo Excel (.xlsx)", type=['x
 
 if uploaded_file is not None:
     try:
-        # Leer y limpiar el archivo Excel
+        # Leer el archivo Excel directamente
         df = pd.read_excel(uploaded_file, engine="openpyxl")
 
-        # Imprimir nombres de las columnas
-        st.write("Nombres de las columnas en el archivo Excel:")
-        st.write(df.columns.tolist())
-
-        # Ajustar nombres de las columnas si es necesario
-        df = df.rename(columns={
-            "Fecha": "Fecha",
-            "Concepto": "Concepto",
-            "Origen / Referencia": "Origen / Referencia",
-            "Depósito": "Depósito",
-            "Retiro": "Retiro",
-            "Saldo": "Saldo"
-        })
-
-        # Seleccionar solo las columnas necesarias
-        df = df[["Fecha", "Concepto", "Origen / Referencia", "Depósito", "Retiro", "Saldo"]]
-
-        # Eliminar filas completamente vacías
+        # Limpiar solo filas completamente vacías
         df = df.dropna(how='all')
 
         st.write("Vista previa de los movimientos:")
         st.dataframe(df)
 
+        # Aplicar limpieza de datos
         df['Fecha'] = df['Fecha'].apply(clean_date)
         df['Depósito'] = df['Depósito'].apply(clean_amount)
         df['Retiro'] = df['Retiro'].apply(clean_amount)
