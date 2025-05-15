@@ -4,15 +4,18 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 import math
+import base64
+from PyPDF2 import PdfReader
+import tempfile
 
 # --- CONSTANTES GLOBALES ---
 LETTER_WIDTH = 800
 LETTER_HEIGHT = 1000
 MARGIN = 30
-BASE_ROW_HEIGHT = 25  # Aumentado para más espacio
+BASE_ROW_HEIGHT = 25
 HEADER_HEIGHT = 25
-LINE_SPACING = 15  # Aumentado para más espacio entre líneas
-ROWS_PER_PAGE = 20  # Reducido para evitar sobrecarga
+LINE_SPACING = 15
+ROWS_PER_PAGE = 20
 
 def split_concept(concept):
     if pd.isnull(concept):
@@ -46,17 +49,36 @@ def split_concept(concept):
                 parts.append(part)
                 break
     else:
-        # Dividir conceptos largos en múltiples líneas
         words = concept.split()
         current_line = []
         for word in words:
             current_line.append(word)
-            if len(' '.join(current_line)) > 40:  # Ajustar según necesidad
+            if len(' '.join(current_line)) > 40:
                 parts.append(' '.join(current_line[:-1]))
                 current_line = [word]
         if current_line:
             parts.append(' '.join(current_line))
     return parts
+
+def clean_amount(amount):
+    if pd.isnull(amount) or str(amount).strip() == '':
+        return ''
+    try:
+        if isinstance(amount, str):
+            amount = float(amount.replace('$', '').replace(',', ''))
+        return '${:,.2f}'.format(amount) if amount != 0 else ''
+    except ValueError:
+        return ''
+
+def clean_date(date):
+    if pd.isnull(date):
+        return ''
+    try:
+        if isinstance(date, str) and ('NOV' in date.upper() or 'DIC' in date.upper()):
+            return date.upper().strip()
+        return pd.to_datetime(date).strftime('%d %b').upper()
+    except:
+        return str(date).upper()
 
 def calculate_row_height(concept_parts):
     return max(len(concept_parts) * LINE_SPACING + 10, BASE_ROW_HEIGHT)
@@ -72,7 +94,6 @@ def create_page(df, start_idx, end_idx, page_number):
         font = ImageFont.load_default()
         font_bold = ImageFont.load_default()
 
-    # Configuración de columnas y estilos
     width = LETTER_WIDTH - (2 * MARGIN)
     headers = ['Fecha', 'Concepto', 'Origen / Referencia', 'Depósito', 'Retiro', 'Saldo']
     col_widths = [
@@ -86,13 +107,11 @@ def create_page(df, start_idx, end_idx, page_number):
     col_widths[-1] = width - sum(col_widths[:-1])
     x_positions = np.cumsum([MARGIN] + col_widths[:-1])
 
-    # Colores
     header_color = '#000000'
     header_text_color = '#FFFFFF'
     alternate_row_color = '#F0F0F0'
     border_color = '#E5E5E5'
 
-    # Dibujar encabezados
     y = MARGIN
     for i, header in enumerate(headers):
         x = x_positions[i]
@@ -104,22 +123,18 @@ def create_page(df, start_idx, end_idx, page_number):
 
     current_y = MARGIN + HEADER_HEIGHT
 
-    # Verificar si hay espacio suficiente para cada fila
     for idx in range(start_idx, min(end_idx, len(df))):
         row = df.iloc[idx]
         concept_parts = split_concept(row['Concepto'])
         row_height = calculate_row_height(concept_parts)
 
-        # Si la siguiente fila excedería el límite de la página, terminar esta página
         if current_y + row_height > LETTER_HEIGHT - MARGIN:
             break
 
-        # Dibujar fila
         if idx % 2 == 0:
             draw.rectangle([MARGIN, current_y, LETTER_WIDTH - MARGIN, current_y + row_height],
                          fill=alternate_row_color)
 
-        # Dibujar contenido
         for i, col in enumerate(headers):
             x = x_positions[i]
             value = str(row[col]) if pd.notnull(row[col]) else ''
@@ -135,13 +150,11 @@ def create_page(df, start_idx, end_idx, page_number):
             else:
                 draw.text((x + 5, current_y + 2), value, fill='black', font=font)
 
-        # Línea separadora
         draw.line([(MARGIN, current_y + row_height),
                    (LETTER_WIDTH - MARGIN, current_y + row_height)], fill=border_color)
 
-        current_y += row_height + 5  # Añadir espacio extra entre filas
+        current_y += row_height + 5
 
-    # Número de página
     page_text = f"Página {page_number}"
     text_width = draw.textlength(page_text, font=font)
     draw.text((LETTER_WIDTH - MARGIN - text_width, LETTER_HEIGHT - MARGIN),
@@ -158,7 +171,7 @@ def create_pdf(df):
     while current_idx < total_rows:
         page, next_idx = create_page(df, current_idx, current_idx + ROWS_PER_PAGE, page_num)
         pages.append(page)
-        if next_idx == current_idx:  # Si no se pudo agregar más filas
+        if next_idx == current_idx:
             break
         current_idx = next_idx
         page_num += 1
@@ -168,7 +181,20 @@ def create_pdf(df):
         pages[0].convert('RGB').save(pdf_buffer, format='PDF', save_all=True,
                                    append_images=[page.convert('RGB') for page in pages[1:]])
         pdf_buffer.seek(0)
-    return pdf_buffer, pages
+    return pdf_buffer
+
+def create_preview_html(pdf_bytes):
+    b64 = base64.b64encode(pdf_bytes).decode('utf-8')
+    html = f'''
+        <iframe
+            src="data:application/pdf;base64,{b64}"
+            width="800"
+            height="1000"
+            type="application/pdf"
+        >
+        </iframe>
+    '''
+    return html
 
 # --- INTERFAZ STREAMLIT ---
 st.set_page_config(page_title="Generador de Estado de Cuenta Scotiabank", layout="wide")
@@ -182,35 +208,32 @@ if uploaded_file is not None:
     try:
         df = pd.read_excel(uploaded_file, engine="openpyxl")
 
-        # Mostrar vista previa de los datos
         st.write("Vista previa de los movimientos:")
         st.dataframe(df)
 
-        # Procesar los datos
         df['Fecha'] = df['Fecha'].apply(clean_date)
         df['Depósito'] = df['Depósito'].apply(clean_amount)
         df['Retiro'] = df['Retiro'].apply(clean_amount)
         df['Saldo'] = df['Saldo'].apply(clean_amount)
 
-        # Generar vista previa y PDF
-        if st.button("Generar Vista Previa y PDF"):
-            with st.spinner('Generando documento...'):
-                pdf_buffer, preview_pages = create_pdf(df)
-                st.success('¡Documento generado correctamente!')
+        if st.button("Generar PDF"):
+            with st.spinner('Generando PDF...'):
+                pdf_buffer = create_pdf(df)
+                st.success('¡PDF generado correctamente!')
 
-                # Mostrar vista previa de todas las páginas
-                st.subheader("Vista previa de todas las páginas:")
-                for i, page in enumerate(preview_pages):
-                    st.image(page, caption=f'Página {i+1}', use_column_width=True)
-                    st.markdown("---")
+                col1, col2 = st.columns([1, 1])
 
-                # Botón de descarga
-                st.download_button(
-                    label="Descargar PDF",
-                    data=pdf_buffer,
-                    file_name="estado_cuenta_modificado.pdf",
-                    mime="application/pdf"
-                )
+                with col1:
+                    st.download_button(
+                        label="Descargar PDF",
+                        data=pdf_buffer.getvalue(),
+                        file_name="estado_cuenta_modificado.pdf",
+                        mime="application/pdf"
+                    )
+
+                st.subheader("Vista previa del PDF:")
+                pdf_preview = create_preview_html(pdf_buffer.getvalue())
+                st.markdown(pdf_preview, unsafe_allow_html=True)
 
     except Exception as e:
         st.error(f"Error al procesar el archivo: {str(e)}")
