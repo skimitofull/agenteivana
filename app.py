@@ -150,10 +150,14 @@ def create_page(df, start_idx, end_idx, page_number):
             else:
                 draw.text((x + 5, current_y + 2), value, fill='black', font=font)
 
-        draw.line([(MARGIN, current_y + row_height),
-                   (LETTER_WIDTH - MARGIN, current_y + row_height)], fill=border_color)
+            # Dibujar líneas verticales
+            if i > 0:
+                draw.line([(x, current_y), (x, current_y + row_height)], fill=border_color)
 
         current_y += row_height + 5
+
+    # Dibujar línea vertical final
+    draw.line([(LETTER_WIDTH - MARGIN, MARGIN + HEADER_HEIGHT), (LETTER_WIDTH - MARGIN, current_y)], fill=border_color)
 
     page_text = f"Página {page_number}"
     text_width = draw.textlength(page_text, font=font)
