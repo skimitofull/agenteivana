@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -10,7 +9,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import base64
 
-# --- CONSTANTES GLOBALES AJUSTADAS ---
+# --- CONSTANTES GLOBALES ---
 PAGE_WIDTH, PAGE_HEIGHT = letter
 MARGIN = 30 * mm
 HEADER_HEIGHT = 15 * mm
@@ -49,45 +48,19 @@ def clean_date(date):
 def split_concept(concept, max_chars=40):
     if pd.isnull(concept):
         return ['']
-
     concept = str(concept).strip()
     parts = []
-
-    if "TRANSF INTERBANCARIA SPEI" in concept:
-        parts = ['TRANSF INTERBANCARIA SPEI']
-
-        # Extraer fecha
-        words = concept.split()
-        for i, word in enumerate(words):
-            if any(month in word.upper() for month in ['NOV', 'DIC']):
-                parts.append(f"{words[i-1]} {word}" if i > 0 else word)
-                break
-
-        # Extraer referencia
-        for word in words:
-            if word.startswith('//'):
-                parts.append(word)
-                break
-
-    elif "SCOTIALINE" in concept:
-        parts = ["SWEB PAGO A SCOTIALINE"]
-        for word in concept.split():
-            if word.isdigit() and len(word) > 10:
-                parts.append(word)
-                break
-    else:
-        words = concept.split()
-        current_line = []
-        for word in words:
-            if len(' '.join(current_line + [word])) <= max_chars:
-                current_line.append(word)
-            else:
-                if current_line:
-                    parts.append(' '.join(current_line))
-                current_line = [word]
-        if current_line:
-            parts.append(' '.join(current_line))
-
+    words = concept.split()
+    current_line = []
+    for word in words:
+        if len(' '.join(current_line + [word])) <= max_chars:
+            current_line.append(word)
+        else:
+            if current_line:
+                parts.append(' '.join(current_line))
+            current_line = [word]
+    if current_line:
+        parts.append(' '.join(current_line))
     return parts
 
 def calculate_row_height(concept_parts):
@@ -102,13 +75,12 @@ def create_pdf(df):
     headers = ['Fecha', 'Concepto', 'Origen / Referencia', 'Depósito', 'Retiro', 'Saldo']
     col_widths = [
         0.10,  # Fecha
-        0.35,  # Concepto
-        0.25,  # Origen / Referencia
+        0.38,  # Concepto
+        0.22,  # Origen / Referencia
         0.10,  # Depósito
         0.10,  # Retiro
         0.10   # Saldo
     ]
-
     usable_width = width - (2 * MARGIN)
     col_widths = [w * usable_width for w in col_widths]
     col_x = [MARGIN]
@@ -141,7 +113,7 @@ def create_pdf(df):
         y = header_y - ROW_HEIGHT
         rows_on_page = 0
 
-        # Dibujar líneas verticales para toda la página
+        # Líneas verticales
         c.setStrokeColor(colors.HexColor("#CCCCCC"))
         page_bottom = MARGIN + 20 * mm
         for x in col_x + [MARGIN + usable_width]:
@@ -197,7 +169,7 @@ def create_pdf(df):
 
 def create_preview_html(pdf_bytes):
     b64 = base64.b64encode(pdf_bytes).decode('utf-8')
-    html = f"""
+    html = f'''
         <iframe
             src="data:application/pdf;base64,{b64}"
             width="800"
@@ -205,7 +177,7 @@ def create_preview_html(pdf_bytes):
             type="application/pdf"
         >
         </iframe>
-    """
+    '''
     return html
 
 # --- INTERFAZ STREAMLIT ---
@@ -218,7 +190,10 @@ uploaded_file = st.file_uploader("Selecciona tu archivo Excel (.xlsx)", type=['x
 
 if uploaded_file is not None:
     try:
+        # Leer y limpiar el archivo Excel
         df = pd.read_excel(uploaded_file, engine="openpyxl")
+        df = df[["Fecha", "Concepto", "Origen / Referencia", "Depósito", "Retiro", "Saldo"]]
+        df = df.dropna(how='all')  # Eliminar filas completamente vacías
 
         st.write("Vista previa de los movimientos:")
         st.dataframe(df)
