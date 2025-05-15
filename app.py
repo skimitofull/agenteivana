@@ -10,7 +10,7 @@ import base64
 
 # --- CONSTANTES GLOBALES ---
 LETTER_WIDTH, LETTER_HEIGHT = letter
-MARGIN = 33  # Pie de página de 33 pt
+MARGIN = 46  # Pie de página de 46 pt
 BASE_ROW_HEIGHT = 25
 HEADER_HEIGHT = 25
 LINE_SPACING = 12
