@@ -12,61 +12,18 @@ import base64
 
 # --- CONSTANTES GLOBALES ---
 PAGE_WIDTH, PAGE_HEIGHT = letter
-MARGIN = 20 * mm
-HEADER_HEIGHT = 12 * mm
-ROW_HEIGHT = 10 * mm
-LINE_SPACING = 4 * mm
-ROWS_PER_PAGE = 20
+MARGIN = 25 * mm
+HEADER_HEIGHT = 15 * mm
+ROW_HEIGHT = 15 * mm
+LINE_SPACING = 5 * mm
+ROWS_PER_PAGE = 15
 
-# Registrar fuente Arial si la tienes, si no, usa Helvetica
+# Registrar fuente
 try:
     pdfmetrics.registerFont(TTFont('Arial', 'Arial.ttf'))
     FONT = 'Arial'
 except:
     FONT = 'Helvetica'
-
-def split_concept(concept):
-    if pd.isnull(concept):
-        return ['']
-    concept = str(concept).strip()
-    parts = []
-    if "TRANSF INTERBANCARIA SPEI" in concept:
-        parts = [
-            'TRANSF INTERBANCARIA SPEI',
-            'TRANSF INTERBANCARIA SPEI',
-            '/TRANSFERENCIA A'
-        ]
-        for part in concept.split():
-            if part.startswith('202'):
-                parts.append(part)
-                break
-        if "DIC" in concept:
-            parts.append("02 DIC")
-        elif "NOV" in concept:
-            parts.append("19 NOV")
-        if "JOSE TOMAS COLSA CHALITA" in concept:
-            parts.append("JOSE TOMAS COLSA CHALITA")
-        for part in concept.split():
-            if part.startswith('//'):
-                parts.append(part)
-                break
-    elif "SCOTIALINE" in concept:
-        parts = ["SWEB PAGO A SCOTIALINE"]
-        for part in concept.split():
-            if part.isdigit() and len(part) > 10:
-                parts.append(part)
-                break
-    else:
-        words = concept.split()
-        current_line = []
-        for word in words:
-            current_line.append(word)
-            if len(' '.join(current_line)) > 40:
-                parts.append(' '.join(current_line[:-1]))
-                current_line = [word]
-        if current_line:
-            parts.append(' '.join(current_line))
-    return parts
 
 def clean_amount(amount):
     if pd.isnull(amount) or str(amount).strip() == '':
@@ -88,85 +45,160 @@ def clean_date(date):
     except:
         return str(date).upper()
 
+def calculate_row_height(concept_parts):
+    return max(len(concept_parts) * LINE_SPACING, ROW_HEIGHT)
+
+def split_concept(concept):
+    if pd.isnull(concept):
+        return ['']
+    concept = str(concept).strip()
+    parts = []
+    max_line_length = 50
+
+    if "TRANSF INTERBANCARIA SPEI" in concept:
+        parts = ['TRANSF INTERBANCARIA SPEI']
+        remaining = concept.replace('TRANSF INTERBANCARIA SPEI', '').strip()
+
+        # Extraer fecha si existe
+        for word in remaining.split():
+            if any(month in word.upper() for month in ['NOV', 'DIC']):
+                parts.append(word)
+                remaining = remaining.replace(word, '').strip()
+                break
+
+        # Extraer referencia si existe
+        for word in remaining.split():
+            if word.startswith('//'):
+                parts.append(word)
+                remaining = remaining.replace(word, '').strip()
+                break
+
+        # Procesar el resto del texto
+        if remaining:
+            words = remaining.split()
+            current_line = []
+            for word in words:
+                if len(' '.join(current_line + [word])) <= max_line_length:
+                    current_line.append(word)
+                else:
+                    if current_line:
+                        parts.append(' '.join(current_line))
+                    current_line = [word]
+            if current_line:
+                parts.append(' '.join(current_line))
+
+    elif "SCOTIALINE" in concept:
+        parts = ["SWEB PAGO A SCOTIALINE"]
+        # Extraer número de referencia si existe
+        for word in concept.split():
+            if word.isdigit() and len(word) > 10:
+                parts.append(word)
+                break
+
+    else:
+        words = concept.split()
+        current_line = []
+        for word in words:
+            if len(' '.join(current_line + [word])) <= max_line_length:
+                current_line.append(word)
+            else:
+                if current_line:
+                    parts.append(' '.join(current_line))
+                current_line = [word]
+        if current_line:
+            parts.append(' '.join(current_line))
+
+    return parts
+
 def create_pdf(df):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = PAGE_WIDTH, PAGE_HEIGHT
 
-    # Columnas
+    # Definición de columnas
     headers = ['Fecha', 'Concepto', 'Origen / Referencia', 'Depósito', 'Retiro', 'Saldo']
     col_widths = [
-        0.08,  # Fecha
-        0.40,  # Concepto
-        0.20,  # Origen / Referencia
-        0.11,  # Depósito
-        0.11,  # Retiro
+        0.10,  # Fecha
+        0.35,  # Concepto
+        0.25,  # Origen / Referencia
+        0.10,  # Depósito
+        0.10,  # Retiro
         0.10   # Saldo
     ]
-    col_widths = [w * (width - 2 * MARGIN) for w in col_widths]
+
+    # Calcular posiciones X
+    usable_width = width - (2 * MARGIN)
+    col_widths = [w * usable_width for w in col_widths]
     col_x = [MARGIN]
     for w in col_widths[:-1]:
         col_x.append(col_x[-1] + w)
-    col_x.append(width - MARGIN)
 
     total_rows = len(df)
     row_idx = 0
     page_number = 1
 
     while row_idx < total_rows:
-        y = height - MARGIN - HEADER_HEIGHT
+        y = height - MARGIN
+        header_y = y - HEADER_HEIGHT
 
         # Encabezado
         c.setFillColor(colors.black)
         c.setStrokeColor(colors.black)
         c.setFont(FONT, 10)
-        c.rect(MARGIN, y, width - 2 * MARGIN, HEADER_HEIGHT, fill=1)
+        c.rect(MARGIN, header_y, usable_width, HEADER_HEIGHT, fill=1)
+
+        # Texto del encabezado
         c.setFillColor(colors.white)
         for i, header in enumerate(headers):
-            c.drawString(col_x[i] + 2, y + 3, header)
+            x_pos = col_x[i] + 2 * mm
+            if header in ['Depósito', 'Retiro', 'Saldo']:
+                text_width = c.stringWidth(header, FONT, 10)
+                x_pos = col_x[i] + col_widths[i] - text_width - 2 * mm
+            c.drawString(x_pos, header_y + 4 * mm, header)
+
         c.setFillColor(colors.black)
-
-        y -= ROW_HEIGHT
-
-        # Filas
+        y = header_y - ROW_HEIGHT
         rows_on_page = 0
+
         while row_idx < total_rows and rows_on_page < ROWS_PER_PAGE:
             row = df.iloc[row_idx]
             concept_parts = split_concept(row['Concepto'])
-            row_height = max(len(concept_parts) * (LINE_SPACING), ROW_HEIGHT)
+            row_height = calculate_row_height(concept_parts)
 
-            # Alternancia de color
+            if y - row_height < MARGIN:
+                break
+
+            # Color de fondo alternado
             if rows_on_page % 2 == 0:
                 c.setFillColor(colors.HexColor("#F0F0F0"))
-                c.rect(MARGIN, y, width - 2 * MARGIN, row_height, fill=1, stroke=0)
+                c.rect(MARGIN, y - row_height, usable_width, row_height, fill=1, stroke=0)
                 c.setFillColor(colors.black)
 
-            # Columnas
+            # Contenido
             for i, col in enumerate(headers):
-                x = col_x[i]
                 value = str(row[col]) if pd.notnull(row[col]) else ''
+                x_pos = col_x[i] + 2 * mm
+
                 if col == 'Concepto':
                     for j, line in enumerate(concept_parts):
-                        c.drawString(x + 2, y + row_height - (j + 1) * LINE_SPACING, line)
+                        text_y = y - (j + 1) * LINE_SPACING
+                        c.drawString(x_pos, text_y, line)
                 elif col in ['Depósito', 'Retiro', 'Saldo']:
-                    c.drawRightString(col_x[i+1] - 4, y + row_height - LINE_SPACING, value)
+                    text_width = c.stringWidth(value, FONT, 10)
+                    x_pos = col_x[i] + col_widths[i] - text_width - 2 * mm
+                    c.drawString(x_pos, y - LINE_SPACING, value)
                 else:
-                    c.drawString(x + 2, y + row_height - LINE_SPACING, value)
+                    c.drawString(x_pos, y - LINE_SPACING, value)
 
             # Líneas verticales
+            c.setStrokeColor(colors.HexColor("#E5E5E5"))
             for x in col_x:
-                c.setStrokeColor(colors.HexColor("#E5E5E5"))
-                c.line(x, y, x, y + row_height)
-            c.setStrokeColor(colors.black)
+                c.line(x, header_y, x, y - row_height)
+            c.line(MARGIN + usable_width, header_y, MARGIN + usable_width, y - row_height)
 
             y -= row_height
             row_idx += 1
             rows_on_page += 1
-
-        # Línea vertical final
-        c.setStrokeColor(colors.HexColor("#E5E5E5"))
-        c.line(width - MARGIN, height - MARGIN - HEADER_HEIGHT, width - MARGIN, y + row_height)
-        c.setStrokeColor(colors.black)
 
         # Número de página
         c.setFont(FONT, 9)
