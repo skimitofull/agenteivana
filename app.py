@@ -208,6 +208,10 @@ if uploaded_file is not None:
     try:
         df = pd.read_excel(uploaded_file, engine="openpyxl")
 
+        # Eliminar la primera columna si está vacía
+        if df.iloc[:, 0].isnull().all():
+            df = df.iloc[:, 1:]
+
         # Limpiar filas completamente vacías
         df = df.dropna(how='all')
 
