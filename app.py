@@ -192,8 +192,26 @@ if uploaded_file is not None:
     try:
         # Leer y limpiar el archivo Excel
         df = pd.read_excel(uploaded_file, engine="openpyxl")
+
+        # Imprimir nombres de las columnas
+        st.write("Nombres de las columnas en el archivo Excel:")
+        st.write(df.columns.tolist())
+
+        # Ajustar nombres de las columnas si es necesario
+        df = df.rename(columns={
+            "Fecha": "Fecha",
+            "Concepto": "Concepto",
+            "Origen / Referencia": "Origen / Referencia",
+            "Depósito": "Depósito",
+            "Retiro": "Retiro",
+            "Saldo": "Saldo"
+        })
+
+        # Seleccionar solo las columnas necesarias
         df = df[["Fecha", "Concepto", "Origen / Referencia", "Depósito", "Retiro", "Saldo"]]
-        df = df.dropna(how='all')  # Eliminar filas completamente vacías
+
+        # Eliminar filas completamente vacías
+        df = df.dropna(how='all')
 
         st.write("Vista previa de los movimientos:")
         st.dataframe(df)
