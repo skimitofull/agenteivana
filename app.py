@@ -211,6 +211,11 @@ if uploaded_file is not None:
         if df.iloc[:, 0].isnull().all():
             df = df.iloc[:, 1:]
 
+        # Eliminar la primera fila si está vacía
+        if df.iloc[0].isnull().all():
+            df = df.iloc[1:]
+            df = df.reset_index(drop=True)
+
         # Limpiar filas completamente vacías
         df = df.dropna(how='all')
 
