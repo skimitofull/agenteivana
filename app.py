@@ -146,7 +146,8 @@ def create_pdf(df):
         page_bottom = MARGIN + 20 * mm
         for x in col_x + [MARGIN + usable_width]:
             c.line(x, header_y, x, page_bottom)
-            while row_idx < total_rows and rows_on_page < ROWS_PER_PAGE:
+
+        while row_idx < total_rows and rows_on_page < ROWS_PER_PAGE:
             row = df.iloc[row_idx]
             concept_parts = split_concept(row['Concepto'])
             num_lines = len(concept_parts)
@@ -196,7 +197,7 @@ def create_pdf(df):
 
 def create_preview_html(pdf_bytes):
     b64 = base64.b64encode(pdf_bytes).decode('utf-8')
-    html = f'''
+    html = f"""
         <iframe
             src="data:application/pdf;base64,{b64}"
             width="800"
@@ -204,7 +205,7 @@ def create_preview_html(pdf_bytes):
             type="application/pdf"
         >
         </iframe>
-    '''
+    """
     return html
 
 # --- INTERFAZ STREAMLIT ---
